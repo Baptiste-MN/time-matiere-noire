@@ -193,6 +193,7 @@ function monthOptions(){
 
 /* ══════════ référentiel ══════════ */
 function activeAt(p,m){
+  if(p.archive) return false;          // une personne archivée ne figure dans aucune liste
   const a=m+'-01', b=m+'-31';
   return (p.periodes||[]).some(x=>(!x.debut||x.debut<=b)&&(!x.fin||x.fin>=a));
 }
