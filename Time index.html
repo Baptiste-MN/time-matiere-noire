@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Matière Noire · Time tracking</title>
+<style>
+:root{
+  --paper:#F7F7F5; --ink:#14161A; --ink2:#5C6169; --ink3:#8C9199;
+  --rule:#DDDEDA; --rule2:#EDEEEA; --card:#FFFFFF;
+  --live:#2F6F4F; --warn:#B4711E; --stop:#A63A2B;
+  --off:#F1F1EE; --today:#FDF6E3;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:"Helvetica Neue",Inter,system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px}
+button,input,select{font:inherit;color:inherit}
+
+header{position:sticky;top:0;z-index:30;background:var(--paper);border-bottom:1px solid var(--rule);
+  padding:12px 18px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+h1{margin:0;font-size:14px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}
+.spacer{flex:1}
+select,input{border:1px solid var(--rule);border-radius:3px;padding:5px 8px;background:var(--card)}
+select:focus,input:focus{outline:none;border-color:var(--ink)}
+.lang{display:flex;border:1px solid var(--rule);border-radius:3px;overflow:hidden}
+.lang button{background:var(--card);border:0;padding:5px 10px;cursor:pointer;font-family:var(--mono);
+  font-size:11px;letter-spacing:.06em;color:var(--ink3)}
+.lang button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+
+#bar{font-family:var(--mono);font-size:11px;padding:6px 18px;border-bottom:1px solid var(--rule);
+  display:flex;gap:9px;align-items:center;background:#FFFDF6}
+#bar.ok{background:#F2F7F3} #bar.err{background:#FCF3F1}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--ink3)}
+.dot.ok{background:var(--live)} .dot.err{background:var(--stop)}
+
+main{padding:18px}
+.kpi{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px;font-family:var(--mono);font-size:10px;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--ink3)}
+.kpi span{display:block;font-size:20px;color:var(--ink);letter-spacing:-.01em}
+.kpi b{font-weight:400;color:var(--warn)}
+
+.wrap{background:var(--card);border:1px solid var(--rule);border-radius:4px;overflow:auto;max-height:70vh}
+table{border-collapse:separate;border-spacing:0;font-size:13px}
+th,td{border-bottom:1px solid var(--rule2);border-right:1px solid var(--rule2);padding:0;white-space:nowrap}
+thead th{position:sticky;top:0;z-index:12;background:var(--card);font-size:10px;font-weight:500;
+  letter-spacing:.05em;color:var(--ink3);text-align:center;padding:5px 0;border-bottom:1px solid var(--rule)}
+th.pj,td.pj{position:sticky;left:0;z-index:11;background:var(--card);text-align:left;padding:6px 10px;
+  min-width:230px;max-width:230px;border-right:1px solid var(--rule);overflow:hidden;text-overflow:ellipsis}
+thead th.pj{z-index:14}
+td.pj{font-size:13px}
+td.pj .cl{display:block;font-family:var(--mono);font-size:10px;color:var(--ink3);text-transform:uppercase}
+th.d{width:38px;min-width:38px}
+th.d.we,td.we{background:var(--off)}
+th.d.fe{background:var(--off);color:var(--warn)}
+th.d.tj{background:var(--today);color:var(--ink);font-weight:700}
+td.tj{background:var(--today)}
+td input{width:38px;border:0;background:transparent;text-align:center;padding:6px 0;
+  font-family:var(--mono);font-size:12px;border-radius:0}
+td input:focus{outline:2px solid var(--ink);outline-offset:-2px;background:var(--card)}
+th.tt,td.tt{position:sticky;right:0;z-index:11;background:var(--card);border-left:1px solid var(--rule);
+  font-family:var(--mono);font-size:12px;text-align:right;padding:6px 10px;min-width:62px}
+thead th.tt{z-index:14}
+tfoot td{position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--rule);
+  font-family:var(--mono);font-size:11px;text-align:center;padding:5px 0;color:var(--ink2)}
+tfoot td.pj{text-align:left;font-family:var(--sans);font-size:11px;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--ink3);z-index:13}
+tfoot td.over{color:var(--warn);font-weight:700}
+tr.recup td.pj{color:var(--ink2);font-style:italic}
+tr.recup input{color:var(--warn)}
+.rm{border:0;background:none;color:var(--ink3);cursor:pointer;float:right;padding:0 2px}
+.rm:hover{color:var(--stop)}
+.foot{margin-top:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.hint{font-size:12px;color:var(--ink2);margin:0 0 14px}
+.empty{padding:40px;text-align:center;color:var(--ink3)}
+@media(max-width:640px){th.pj,td.pj{min-width:150px;max-width:150px}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="t-title">Time tracking</h1>
+  <select id="who"></select>
+  <select id="month"></select>
+  <span class="spacer"></span>
+  <select id="addp" disabled></select>
+  <div class="lang">
+    <button data-l="fr" aria-pressed="true">FR</button>
+    <button data-l="en" aria-pressed="false">EN</button>
+  </div>
+</header>
+
+<div id="bar"><span class="dot" id="dot"></span><span id="msg">…</span></div>
+
+<main>
+  <p class="hint" id="t-hint"></p>
+  <div class="kpi" id="kpi"></div>
+  <div id="grid"></div>
+  <div class="foot" id="foot"></div>
+</main>
+
+<script type="module">
+import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import {getDatabase,ref,onValue,set,remove} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+
+const FIREBASE_CONFIG={
+  apiKey:"AIzaSyByf4SmnGJvfkkJVFhfINXikb8I8ge5VRU",
+  authDomain:"matiere-noire-todo.firebaseapp.com",
+  databaseURL:"https://matiere-noire-todo-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId:"matiere-noire-todo",
+  storageBucket:"matiere-noire-todo.firebasestorage.app",
+  messagingSenderId:"583651643354",
+  appId:"1:583651643354:web:74b78c43316b9d657dfae3"
+};
+const ROOT='referentiel', RECUP='_recup';
+const db=getDatabase(initializeApp(FIREBASE_CONFIG));
+
+/* ══════════ traductions ══════════ */
+const T={
+ fr:{title:'Suivi des temps',who:'Qui es-tu ?',add:'Ajouter un projet…',
+  hint:'Saisis tes heures réelles, même au-delà de 8 h. Chaque case est enregistrée dès que tu la quittes.',
+  pickName:'Choisis ton nom pour commencer.',
+  noProj:'Aucun projet ce mois-ci. Utilise « Ajouter un projet » en haut à droite.',
+  project:'Projet',total:'Total',dayTotal:'Total jour',unknown:'inconnu',
+  recup:'Récupération',recupSub:'jours + / −',removeRow:'Retirer la ligne',archived:'archivé',
+  confirmRm:n=>`Retirer « ${n} » ? Les heures déjà saisies seront effacées.`,
+  kHours:'Heures saisies',kDays:'Jours (÷8)',kWork:'Jours ouvrés',kProj:'Projets',kOver:'Jours > 8 h',kRecup:'Récupération',
+  footer:'Week-ends et jours fériés grisés.',
+  connecting:'Connexion…',
+  connected:(p,r)=>`Connecté · ${p} personnes · ${r} projets`,
+  saved:t=>'Enregistré · '+t, saveFail:m=>'Non enregistré : '+m,
+  dbFail:m=>'Base inaccessible : '+m, rmFail:m=>'Suppression impossible : '+m,
+  badVal:'Valeur ignorée : saisis un nombre d’heures entre 0 et 24.',
+  overTip:h=>`${h} h saisies — 8 h seront retenues pour la rentabilité`,
+  holiday:'férié',
+  months:['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'],
+  wd:['D','L','M','M','J','V','S'], loc:'fr-FR'},
+ en:{title:'Time tracking',who:'Who are you?',add:'Add a project…',
+  hint:'Enter your actual hours, even beyond 8. Every cell saves as soon as you leave it.',
+  pickName:'Pick your name to get started.',
+  noProj:'No projects this month. Use “Add a project” at the top right.',
+  project:'Project',total:'Total',dayTotal:'Daily total',unknown:'unknown',
+  recup:'Time off in lieu',recupSub:'days + / −',removeRow:'Remove row',archived:'archived',
+  confirmRm:n=>`Remove “${n}”? Any hours already entered will be deleted.`,
+  kHours:'Hours entered',kDays:'Days (÷8)',kWork:'Working days',kProj:'Projects',kOver:'Days over 8 h',kRecup:'In lieu',
+  footer:'Weekends and public holidays are shaded.',
+  connecting:'Connecting…',
+  connected:(p,r)=>`Connected · ${p} people · ${r} projects`,
+  saved:t=>'Saved · '+t, saveFail:m=>'Not saved: '+m,
+  dbFail:m=>'Database unreachable: '+m, rmFail:m=>'Could not remove: '+m,
+  badVal:'Value ignored — enter a number of hours between 0 and 24.',
+  overTip:h=>`${h} h entered — 8 h will count towards profitability`,
+  holiday:'public holiday',
+  months:['January','February','March','April','May','June','July','August','September','October','November','December'],
+  wd:['S','M','T','W','T','F','S'], loc:'en-GB'}
+};
+let L=localStorage.getItem('mn_tt_lang')||(navigator.language||'').toLowerCase().startsWith('fr')?'fr':'en';
+if(localStorage.getItem('mn_tt_lang'))L=localStorage.getItem('mn_tt_lang');
+const t=()=>T[L];
+
+let PEOPLE=[],PROJECTS={},TIME={},me='',month='',rows=[],ready=false,lastStatus=null;
+
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const n1=x=>Number(x).toLocaleString(t().loc,{maximumFractionDigits:2});
+function status(fn,k){lastStatus=[fn,k];$('#bar').className=k||'';$('#dot').className='dot '+(k||'');$('#msg').textContent=typeof fn==='function'?fn():fn;}
+
+/* ══════════ calendrier ══════════ */
+function easter(y){const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),
+ g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,
+ m=Math.floor((a+11*h+22*l)/451),mo=Math.floor((h+l-7*m+114)/31),da=((h+l-7*m+114)%31)+1;
+ return new Date(Date.UTC(y,mo-1,da));}
+function feries(y){
+  const E=easter(y),d=n=>{const x=new Date(E);x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10);};
+  return new Set([`${y}-01-01`,`${y}-05-01`,`${y}-05-08`,`${y}-07-14`,`${y}-08-15`,`${y}-11-01`,`${y}-11-11`,`${y}-12-25`,d(1),d(39),d(50)]);
+}
+function days(m){
+  const [y,mm]=m.split('-').map(Number), last=new Date(y,mm,0).getDate(), F=feries(y), out=[];
+  const today=new Date().toISOString().slice(0,10);
+  for(let d=1;d<=last;d++){
+    const iso=`${y}-${String(mm).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const wd=new Date(iso+'T12:00:00Z').getUTCDay();
+    out.push({d,iso,we:wd===0||wd===6,fe:F.has(iso),today:iso===today,wd});
+  }
+  return out;
+}
+function monthOptions(){
+  const out=[],now=new Date();
+  for(let i=-14;i<=1;i++){const dt=new Date(now.getFullYear(),now.getMonth()+i,1);
+    out.push([`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`,`${t().months[dt.getMonth()]} ${dt.getFullYear()}`]);}
+  return out.reverse();
+}
+
+/* ══════════ référentiel ══════════ */
+/* Seule la categorie « projet » saisit son temps ici.
+   - direction (FW, PD)   : temps estime a la main, via le dashboard
+   - overhead  (SW, BG)   : hors marge projet, aucune saisie
+   - prestataire (SG, SA) : factures au jour, via prive/couts/<projet>/externes
+   Le champ « archive » des personnes n'est plus lu : l'appartenance se
+   deduit de « categorie » et la presence du mois de « periodes ».
+   NB : « archive » reste utilise sur les PROJETS, plus bas, et c'est normal. */
+const CAT_SAISIE='projet';
+function activeAt(p,m){
+  if(p.categorie!==CAT_SAISIE) return false;
+  const a=m+'-01', b=m+'-31';
+  return (p.periodes||[]).some(x=>(!x.debut||x.debut<=b)&&(!x.fin||x.fin>=a));
+}
+let loaded=0;
+function onData(){
+  if(!ready&&loaded>=3){initSelects();ready=true;}
+  else if(ready){fillWho();fillAdd();}
+  if(ready){status(()=>t().connected(PEOPLE.length,Object.keys(PROJECTS).length),'ok');
+            if(me&&month)paint();}
+}
+const fail=e=>status(()=>t().dbFail(e.message),'err');
+onValue(ref(db,ROOT+'/people'),s=>{
+  PEOPLE=(s.val()||[]).slice().sort((a,b)=>a.nom.localeCompare(b.nom,'fr'));loaded++;onData();},fail);
+onValue(ref(db,ROOT+'/projects'),s=>{PROJECTS=s.val()||{};loaded++;onData();},fail);
+onValue(ref(db,ROOT+'/time'),s=>{TIME=s.val()||{};loaded++;onData();},fail);
+
+function initSelects(){
+  const now=new Date(); month=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  fillMonths(); fillWho();
+  const saved=localStorage.getItem('mn_tt_me')||'';
+  if(saved&&PEOPLE.some(p=>p.id===saved)){me=saved;$('#who').value=me;}
+  build();
+}
+function fillMonths(){
+  const s=$('#month'); s.innerHTML=monthOptions().map(([v,l])=>`<option value="${v}">${esc(l)}</option>`).join('');
+  s.value=month;
+}
+function fillWho(){
+  const s=$('#who');
+  s.innerHTML=`<option value="">${esc(t().who)}</option>`+
+    PEOPLE.filter(p=>activeAt(p,month)).map(p=>`<option value="${esc(p.id)}">${esc(p.nom)}</option>`).join('');
+  s.value=me||'';
+}
+function mine(){return (TIME[month]||{})[me]||{};}
+function visible(){
+  const mine_=mine();
+  const garde=id=>{
+    if(id===RECUP) return true;
+    const p=PROJECTS[id];
+    if(!p) return true;                                   // projet inconnu : on garde, sinon les heures disparaissent
+    if(!p.archive) return true;
+    return Object.values(mine_[id]||{}).some(v=>v);        // archivé : visible seulement s'il porte des heures
+  };
+  return Object.keys(mine_).filter(garde)
+    .sort((a,b)=>a===RECUP?1:b===RECUP?-1:label(a).localeCompare(label(b),'fr'));
+}
+const label=id=>id===RECUP?t().recup:(PROJECTS[id]?PROJECTS[id].nom:id);
+const client=id=>{
+  if(id===RECUP) return t().recupSub;
+  const p=PROJECTS[id]; if(!p) return t().unknown;
+  return (p.archive?'— '+t().archived+' —':'')+(p.client||'');
+};
+
+function fillAdd(){
+  const s=$('#addp');
+  if(!me){s.disabled=true;s.innerHTML=`<option value="">${esc(t().add)}</option>`;return;}
+  s.disabled=false;
+  const shown=new Set(visible());
+  const opts=Object.values(PROJECTS)
+    .filter(p=>!p.archive&&(p.statut==='actif'||p.statut==='interne')&&!shown.has(p.id))
+    .sort((a,b)=>a.nom.localeCompare(b.nom,'fr'))
+    .map(p=>`<option value="${esc(p.id)}">${esc(p.nom)}</option>`).join('');
+  s.innerHTML=`<option value="">${esc(t().add)}</option>`+opts+
+    (shown.has(RECUP)?'':`<option value="${RECUP}">— ${esc(t().recup)} (${esc(t().recupSub)})</option>`);
+}
+
+/* ══════════ grille ══════════ */
+function build(){
+  $('#t-title').textContent=t().title;
+  $('#t-hint').textContent=t().hint;
+  document.documentElement.lang=L;
+  if(!me){$('#grid').innerHTML=`<div class="empty">${esc(t().pickName)}</div>`;$('#kpi').innerHTML='';$('#foot').innerHTML='';fillAdd();return;}
+  const D=days(month); rows=visible();
+  if(!rows.length){
+    $('#grid').innerHTML=`<div class="empty">${esc(t().noProj)}</div>`;
+  }else{
+    $('#grid').innerHTML=`<div class="wrap"><table>
+      <thead><tr><th class="pj">${esc(t().project)}</th>
+        ${D.map(d=>`<th class="d${d.we?' we':''}${d.fe?' fe':''}${d.today?' tj':''}" title="${d.iso}${d.fe?' · '+esc(t().holiday):''}">${d.d}<br><span style="font-weight:400">${t().wd[d.wd]}</span></th>`).join('')}
+        <th class="tt">${esc(t().total)}</th></tr></thead>
+      <tbody>${rows.map(id=>`<tr${id===RECUP?' class="recup"':''} data-p="${esc(id)}">
+        <td class="pj" title="${esc(label(id))}">${esc(label(id))}<button class="rm" data-rm="${esc(id)}" title="${esc(t().removeRow)}">✕</button><span class="cl">${esc(client(id))}</span></td>
+        ${D.map(d=>`<td class="${d.we?'we':''}${d.today?' tj':''}"><input inputmode="decimal" data-p="${esc(id)}" data-d="${d.d}"></td>`).join('')}
+        <td class="tt" data-rt="${esc(id)}">·</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td class="pj">${esc(t().dayTotal)}</td>
+        ${D.map(d=>`<td data-ct="${d.d}">·</td>`).join('')}<td class="tt" data-grand>·</td></tr></tfoot>
+    </table></div>`;
+    wire();
+  }
+  fillAdd(); paint();
+}
+function wire(){
+  document.querySelectorAll('#grid input').forEach(el=>{
+    el.onfocus=()=>el.select();
+    el.onchange=()=>commit(el);
+    el.onkeydown=e=>{
+      if(e.key==='Enter'){e.preventDefault();el.blur();}
+      const dir={ArrowLeft:[0,-1],ArrowRight:[0,1],ArrowUp:[-1,0],ArrowDown:[1,0]}[e.key];
+      if(dir&&!e.shiftKey){
+        const ri=rows.indexOf(el.dataset.p), di=+el.dataset.d;
+        const tgt=document.querySelector(`#grid input[data-p="${CSS.escape(rows[ri+dir[0]]||'')}"][data-d="${di+dir[1]}"]`);
+        if(tgt){e.preventDefault();tgt.focus();}
+      }
+    };
+  });
+  document.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{
+    const id=b.dataset.rm;
+    const used=Object.values(mine()[id]||{}).some(v=>v);
+    if(used&&!confirm(t().confirmRm(label(id))))return;
+    try{await remove(ref(db,`${ROOT}/time/${month}/${me}/${id}`));
+        if(TIME[month]&&TIME[month][me])delete TIME[month][me][id];
+        build();}
+    catch(e){status(()=>t().rmFail(e.message),'err');}
+  });
+}
+async function commit(el){
+  const raw=el.value.trim().replace(',','.');
+  const v=raw===''?null:parseFloat(raw);
+  if(raw!==''&&(isNaN(v)||v<-24||v>24)){el.value='';status(()=>t().badVal,'err');return;}
+  try{
+    await set(ref(db,`${ROOT}/time/${month}/${me}/${el.dataset.p}/${el.dataset.d}`),(v===null||v===0)?null:v);
+    status(()=>t().saved(new Date().toLocaleTimeString(t().loc)),'ok');
+  }catch(e){status(()=>t().saveFail(e.message),'err');}
+}
+function paint(){
+  if(!me||!rows.length){paintKpi();return;}
+  const data=mine(), D=days(month), focus=document.activeElement;
+  const colT={}; D.forEach(d=>colT[d.d]=0);
+  let grand=0, over=0;
+  rows.forEach(id=>{
+    let rt=0;
+    D.forEach(d=>{
+      const v=(data[id]||{})[d.d];
+      const el=document.querySelector(`#grid input[data-p="${CSS.escape(id)}"][data-d="${d.d}"]`);
+      if(el&&el!==focus)el.value=v==null?'':n1(v);
+      if(v){rt+=v;colT[d.d]+=v;}
+    });
+    grand+=rt;
+    const c=document.querySelector(`[data-rt="${CSS.escape(id)}"]`); if(c)c.textContent=rt?n1(rt):'·';
+  });
+  D.forEach(d=>{
+    const c=document.querySelector(`[data-ct="${d.d}"]`); if(!c)return;
+    c.textContent=colT[d.d]?n1(colT[d.d]):'·';
+    const isOver=colT[d.d]>8; if(isOver)over++;
+    c.className=(d.we?'we':'')+(isOver?' over':'');
+    c.title=isOver?t().overTip(n1(colT[d.d])):'';
+  });
+  const g=document.querySelector('[data-grand]'); if(g)g.textContent=grand?n1(grand):'·';
+  paintKpi(grand,over);
+}
+function paintKpi(grand,over){
+  if(!me){$('#kpi').innerHTML='';$('#foot').innerHTML='';return;}
+  const D=days(month), ouvres=D.filter(d=>!d.we&&!d.fe).length;
+  const rec=Object.values((mine()[RECUP])||{}).reduce((s,v)=>s+v,0);
+  $('#kpi').innerHTML=`
+    <div>${esc(t().kHours)}<span>${n1(grand||0)}</span></div>
+    <div>${esc(t().kDays)}<span>${n1(Math.round((grand||0)/8*10)/10)}</span></div>
+    <div>${esc(t().kWork)}<span>${ouvres}</span></div>
+    <div>${esc(t().kProj)}<span>${rows.filter(r=>r!==RECUP).length}</span></div>
+    ${over?`<div>${esc(t().kOver)}<span><b>${over}</b></span></div>`:''}
+    ${rec?`<div>${esc(t().kRecup)}<span>${n1(rec)}</span></div>`:''}`;
+  $('#foot').innerHTML=`<span class="hint" style="margin:0">${esc(t().footer)}</span>`;
+}
+
+/* ══════════ contrôles ══════════ */
+$('#who').onchange=e=>{me=e.target.value;localStorage.setItem('mn_tt_me',me);build();};
+$('#month').onchange=e=>{month=e.target.value;fillWho();build();};
+$('#addp').onchange=e=>{
+  const id=e.target.value; e.target.value='';
+  if(!id||!me)return;
+  TIME[month]=TIME[month]||{}; TIME[month][me]=TIME[month][me]||{}; TIME[month][me][id]=TIME[month][me][id]||{};
+  build();
+  const f=document.querySelector(`#grid input[data-p="${CSS.escape(id)}"]`); if(f)f.focus();
+};
+document.querySelectorAll('.lang button').forEach(b=>b.onclick=()=>{
+  L=b.dataset.l; localStorage.setItem('mn_tt_lang',L);
+  document.querySelectorAll('.lang button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  fillMonths(); fillWho(); build();
+  if(lastStatus)status(lastStatus[0],lastStatus[1]);
+});
+document.querySelectorAll('.lang button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.l===L));
+status(()=>t().connecting,'');
+</script></body></html>
