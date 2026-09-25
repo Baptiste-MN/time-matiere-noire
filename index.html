@@ -72,6 +72,14 @@ tr.recup input{color:var(--warn)}
 .rm:hover{color:var(--stop)}
 .foot{margin-top:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .hint{font-size:12px;color:var(--ink2);margin:0 0 14px}
+.notes{margin-top:18px;background:var(--card);border:1px solid var(--rule);border-radius:4px;padding:12px 14px}
+.notes-h{display:flex;align-items:baseline;gap:10px;margin-bottom:7px;font-size:10px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink2);font-weight:600}
+.notes-s{font-family:var(--mono);font-size:10px;letter-spacing:.04em;text-transform:none;font-weight:400;color:var(--ink3)}
+.notes textarea{width:100%;min-height:84px;resize:vertical;border:1px solid var(--rule);border-radius:3px;
+  padding:8px 10px;background:var(--paper);line-height:1.55;font:inherit;font-size:13px}
+.notes textarea:focus{outline:none;border-color:var(--ink);background:var(--card)}
+.notes-hint{font-size:11px;color:var(--ink3);margin-top:5px}
 .empty{padding:40px;text-align:center;color:var(--ink3)}
 @media(max-width:640px){th.pj,td.pj{min-width:150px;max-width:150px}}
 </style>
@@ -97,6 +105,11 @@ tr.recup input{color:var(--warn)}
   <div class="kpi" id="kpi"></div>
   <div id="grid"></div>
   <div class="foot" id="foot"></div>
+  <div class="notes" id="notes" hidden>
+    <div class="notes-h"><span id="t-notes-title"></span><span class="notes-s" id="notes-state"></span></div>
+    <textarea id="notes-txt" rows="4"></textarea>
+    <div class="notes-hint" id="t-notes-hint"></div>
+  </div>
 </main>
 
 <script type="module">
@@ -126,6 +139,10 @@ const T={
   confirmRm:n=>`Retirer « ${n} » ? Les heures déjà saisies seront effacées.`,
   kHours:'Heures saisies',kDays:'Jours (÷8)',kWork:'Jours ouvrés',kProj:'Projets',kOver:'Jours > 8 h',kRecup:'Récupération',
   footer:'Week-ends et jours fériés grisés.',
+  notesTitle:m=>'Notes · '+m,
+  notesPh:'Déplacements, heures à récupérer, rappels… Visible par toute l’équipe.',
+  notesHint:'Enregistré automatiquement. Une note par personne et par mois.',
+  notesSaved:t=>'enregistré · '+t, notesSaving:'enregistrement…',
   connecting:'Connexion…',
   connected:(p,r)=>`Connecté · ${p} personnes · ${r} projets`,
   saved:t=>'Enregistré · '+t, saveFail:m=>'Non enregistré : '+m,
@@ -144,6 +161,10 @@ const T={
   confirmRm:n=>`Remove “${n}”? Any hours already entered will be deleted.`,
   kHours:'Hours entered',kDays:'Days (÷8)',kWork:'Working days',kProj:'Projects',kOver:'Days over 8 h',kRecup:'In lieu',
   footer:'Weekends and public holidays are shaded.',
+  notesTitle:m=>'Notes · '+m,
+  notesPh:'Travel, hours to recover, reminders… Visible to the whole team.',
+  notesHint:'Saved automatically. One note per person and per month.',
+  notesSaved:t=>'saved · '+t, notesSaving:'saving…',
   connecting:'Connecting…',
   connected:(p,r)=>`Connected · ${p} people · ${r} projects`,
   saved:t=>'Saved · '+t, saveFail:m=>'Not saved: '+m,
@@ -209,6 +230,8 @@ onValue(ref(db,ROOT+'/people'),s=>{
   PEOPLE=(s.val()||[]).slice().sort((a,b)=>a.nom.localeCompare(b.nom,'fr'));loaded++;onData();},fail);
 onValue(ref(db,ROOT+'/projects'),s=>{PROJECTS=s.val()||{};loaded++;onData();},fail);
 onValue(ref(db,ROOT+'/time'),s=>{TIME=s.val()||{};loaded++;onData();},fail);
+let NOTES={};
+onValue(ref(db,ROOT+'/timeNotes'),s=>{ NOTES=s.val()||{}; paintNotes(); },()=>{});
 
 function initSelects(){
   const now=new Date(); month=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
@@ -261,6 +284,44 @@ function fillAdd(){
 }
 
 /* ══════════ grille ══════════ */
+/* ── notes du mois ──
+   Stockées à part (referentiel/timeNotes/{mois}/{personne}) pour ne jamais
+   polluer les heures : aucun calcul de coût ne lit cette branche. */
+let notesTimer=null;
+function nomMois(m){ const [y,mm]=m.split('-').map(Number); return `${t().months[mm-1]} ${y}`; }
+function paintNotes(){
+  const box=$('#notes');
+  if(!me){ box.hidden=true; return; }
+  box.hidden=false;
+  $('#t-notes-title').textContent=t().notesTitle(nomMois(month));
+  $('#t-notes-hint').textContent=t().notesHint;
+  const ta=$('#notes-txt');
+  ta.placeholder=t().notesPh;
+  if(document.activeElement!==ta){                    // ne jamais écraser une saisie en cours
+    const n=((NOTES[month]||{})[me])||{};
+    ta.value=n.texte||'';
+    $('#notes-state').textContent=n.majLe?t().notesSaved(new Date(n.majLe).toLocaleString(t().loc,{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})):'';
+  }
+}
+async function saveNote(){
+  if(!me) return;
+  const txt=$('#notes-txt').value;
+  const path=`${ROOT}/timeNotes/${month}/${me}`;
+  try{
+    if(txt.trim()) await set(ref(db,path),{texte:txt,majLe:Date.now()});
+    else await remove(ref(db,path));
+    $('#notes-state').textContent=t().notesSaved(new Date().toLocaleTimeString(t().loc,{hour:'2-digit',minute:'2-digit'}));
+  }catch(e){ $('#notes-state').textContent=t().saveFail(e.message); }
+}
+function bindNotes(){
+  const ta=$('#notes-txt');
+  ta.oninput=()=>{
+    $('#notes-state').textContent=t().notesSaving;
+    clearTimeout(notesTimer); notesTimer=setTimeout(saveNote,900);
+  };
+  ta.onblur=()=>{ clearTimeout(notesTimer); saveNote(); };
+}
+
 function build(){
   $('#t-title').textContent=t().title;
   $('#t-hint').textContent=t().hint;
@@ -283,7 +344,7 @@ function build(){
     </table></div>`;
     wire();
   }
-  fillAdd(); paint();
+  fillAdd(); paint(); paintNotes();
 }
 function wire(){
   document.querySelectorAll('#grid input').forEach(el=>{
@@ -376,4 +437,5 @@ document.querySelectorAll('.lang button').forEach(b=>b.onclick=()=>{
 });
 document.querySelectorAll('.lang button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.l===L));
 status(()=>t().connecting,'');
+bindNotes();
 </script></body></html>
