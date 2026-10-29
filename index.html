@@ -114,7 +114,7 @@ tr.recup input{color:var(--warn)}
 
 <script type="module">
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import {getDatabase,ref,onValue,set,remove} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+import {getDatabase,ref,onValue,set,remove,get} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
 
 const FIREBASE_CONFIG={
   apiKey:"AIzaSyByf4SmnGJvfkkJVFhfINXikb8I8ge5VRU",
@@ -127,6 +127,88 @@ const FIREBASE_CONFIG={
 };
 const ROOT='referentiel', RECUP='_recup';
 const db=getDatabase(initializeApp(FIREBASE_CONFIG));
+
+/* ═══ MN-GATE v1 — connexion Google obligatoire, liste d'accès /acces ═══
+   Bloc identique dans tous les outils : à modifier partout à la fois.
+   Session conservée par Firebase (même domaine) : une connexion vaut pour tous les outils. */
+async function mnGate(){
+  const B='https://www.gstatic.com/firebasejs/10.12.0/';
+  const [F,A,D]=await Promise.all([import(B+'firebase-app.js'),import(B+'firebase-auth.js'),import(B+'firebase-database.js')]);
+  const app=F.getApp(), auth=A.getAuth(app), db=D.getDatabase(app);
+  const g=document.createElement('div'); g.id='mn-gate';
+  g.innerHTML=`<style>
+#mn-gate{position:fixed;inset:0;z-index:2147483000;background:#F7F7F5;color:#14161A;display:flex;align-items:center;justify-content:center;
+  font-family:"Helvetica Neue",Inter,system-ui,sans-serif;font-size:14px;line-height:1.5;padding:24px;box-sizing:border-box}
+#mn-gate .mg{max-width:380px;width:100%}
+#mn-gate .mg-t{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;margin:0 0 4px}
+#mn-gate .mg-s{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11px;color:#8C9199;margin:0 0 22px}
+#mn-gate .mg-m{margin:0 0 16px;color:#5C6169}
+#mn-gate .mg-m b{color:#14161A;font-weight:600}
+#mn-gate .mg-m.err{color:#A63A2B}
+#mn-gate button{font:inherit;font-size:13px;border:1px solid #14161A;background:#14161A;color:#F7F7F5;border-radius:3px;padding:8px 16px;cursor:pointer;margin:0 8px 8px 0}
+#mn-gate button.sec{background:transparent;color:#14161A;border-color:#DDDEDA}
+#mn-gate button:hover{opacity:.85}
+</style><div class="mg"><div class="mg-t">Matiere Noire</div><div class="mg-s"></div><div class="mg-m"></div><div class="mg-a"></div></div>`;
+  document.body.appendChild(g);
+  g.querySelector('.mg-s').textContent=document.title||'';
+  const msg=(h,err)=>{const m=g.querySelector('.mg-m');m.innerHTML=h;m.className='mg-m'+(err?' err':'');};
+  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const btns=list=>{const a=g.querySelector('.mg-a');a.innerHTML='';
+    list.forEach(([t,f,sec])=>{const b=document.createElement('button');b.textContent=t;if(sec)b.className='sec';b.onclick=f;a.appendChild(b);});};
+  const login=async()=>{
+    try{const p=new A.GoogleAuthProvider();p.setCustomParameters({prompt:'select_account'});await A.signInWithPopup(auth,p);}
+    catch(e){
+      if(e&&(e.code==='auth/popup-closed-by-user'||e.code==='auth/cancelled-popup-request'))return;
+      msg(location.protocol==='file:'
+        ?'Connexion impossible depuis un fichier local : ouvrez la page en ligne.'
+        :e&&e.code==='auth/popup-blocked'
+          ?'La fenêtre de connexion a été bloquée par le navigateur. Autorisez les pop-ups pour ce site, puis réessayez.<br>Pop-up blocked: allow pop-ups for this site and retry.'
+          :'Connexion impossible · Sign-in failed<br><small>'+esc(e&&(e.code||e.message))+'</small>',true);
+    }
+  };
+  const ecranConnexion=()=>{msg('Connectez-vous avec votre compte <b>@matiere-noire.paris</b>.<br>Sign in with your Matiere Noire Google account.');
+    btns([['Se connecter avec Google · Sign in',login]]);};
+  msg('Chargement…'); btns([]);
+  return new Promise(resolve=>{
+    let ok=false;
+    A.onAuthStateChanged(auth,async u=>{
+      if(ok){ if(!u) location.reload(); return; }      // déconnexion après ouverture : on revient à l'écran de connexion
+      if(!u){ecranConnexion();return;}
+      msg('Vérification de l’accès…'); btns([]);
+      const email=(u.email||'').toLowerCase();
+      let autorise=false, erreur=null;
+      try{
+        autorise=!!u.emailVerified && (await D.get(D.ref(db,'acces/'+email.replace(/\./g,',')))).exists();
+      }catch(e){
+        if(!/permission/i.test(e&&e.message||'')) erreur=e;  // permission refusée = compte non autorisé
+      }
+      if(autorise){ok=true;g.remove();resolve(u);return;}
+      if(erreur){msg('Impossible de vérifier l’accès (connexion internet ?) · Could not check access.<br><small>'+esc(erreur.message)+'</small>',true);
+        btns([['Réessayer · Retry',()=>location.reload()],['Changer de compte',login,true]]);return;}
+      msg('<b>'+esc(email)+'</b> n’a pas accès à la plateforme. Demandez l’accès à Baptiste.<br>This account has no access. Ask Baptiste.',true);
+      btns([['Changer de compte · Switch account',login],['Se déconnecter',()=>A.signOut(auth),true]]);
+    });
+  });
+}
+/* ═══ fin MN-GATE v1 ═══ */
+const mnUser=await mnGate();
+/* ═══ MN-ID v1 — identité liée au compte Google (acces/<email>.personId) ═══
+   Direction : voit et modifie les données de tout le monde. Équipe : uniquement les siennes. */
+const MN_DIR=['baptiste@matiere-noire.paris','felix@matiere-noire.paris','pierre@matiere-noire.paris','sam@matiere-noire.paris'];
+const mnEmail=(mnUser.email||'').toLowerCase();
+const mnAdmin=MN_DIR.includes(mnEmail);
+let mnPid=null;
+try{ mnPid=((await get(ref(db,'acces/'+mnEmail.replace(/\./g,',')))).val()||{}).personId||null; }catch(_){}
+const mnNorm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+/* un nom libre (« Aleksandra », « Aleksandra Ognjanov ») correspond-il à cette fiche ? */
+const mnMemeNom=(nom,p)=>!!p&&!!nom&&(mnNorm(nom)===mnNorm(p.nom)||mnNorm(nom)===mnNorm(String(p.nom||'').split(/\s+/)[0]));
+/* rattache un nom libre à une fiche unique, sinon null (ambigu ou inconnu) */
+const mnFiche=(nom,liste)=>{const c=(liste||[]).filter(p=>p&&p.id&&mnMemeNom(nom,p));return c.length===1?c[0]:null;};
+if(!mnAdmin&&!mnPid){
+  document.body.insertAdjacentHTML('beforeend',`<div style="position:fixed;inset:0;z-index:2147483000;background:#F7F7F5;color:#14161A;display:flex;align-items:center;justify-content:center;font-family:'Helvetica Neue',Inter,system-ui,sans-serif;padding:24px"><div style="max-width:380px"><div style="font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;margin-bottom:18px">Matiere Noire</div><p style="color:#A63A2B">Ton compte (${mnEmail.replace(/[<>&"]/g,'')}) n’est relié à aucune fiche de l’équipe. Demande à Baptiste de le relier.<br>Your account is not linked to a team member. Ask Baptiste.</p></div></div>`);
+  await new Promise(()=>{});   // arrêt : rien d'autre ne se charge
+}
+/* ═══ fin MN-ID v1 ═══ */
 
 /* ══════════ traductions ══════════ */
 const T={
@@ -229,15 +311,34 @@ const fail=e=>status(()=>t().dbFail(e.message),'err');
 onValue(ref(db,ROOT+'/people'),s=>{
   PEOPLE=(s.val()||[]).slice().sort((a,b)=>a.nom.localeCompare(b.nom,'fr'));loaded++;onData();},fail);
 onValue(ref(db,ROOT+'/projects'),s=>{PROJECTS=s.val()||{};loaded++;onData();},fail);
-onValue(ref(db,ROOT+'/time'),s=>{TIME=s.val()||{};loaded++;onData();},fail);
 let NOTES={};
-onValue(ref(db,ROOT+'/timeNotes'),s=>{ NOTES=s.val()||{}; paintNotes(); },()=>{});
+/* Direction : tout le temps de tout le monde. Équipe : uniquement son mois en cours (les règles l'imposent aussi). */
+let unT=null, unN=null, tLoaded=false;
+const moisCourant=()=>{const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`;};
+function subTemps(){
+  if(unT){unT();unT=null;} if(unN){unN();unN=null;}
+  const ok=()=>{if(!tLoaded){tLoaded=true;loaded++;}onData();};
+  if(mnAdmin){
+    unT=onValue(ref(db,ROOT+'/time'),s=>{TIME=s.val()||{};ok();},fail);
+    unN=onValue(ref(db,ROOT+'/timeNotes'),s=>{NOTES=s.val()||{};paintNotes();},()=>{});
+  }else{
+    const m=month||moisCourant();
+    unT=onValue(ref(db,`${ROOT}/time/${m}/${mnPid}`),s=>{TIME={[m]:{[mnPid]:s.val()||{}}};ok();},fail);
+    unN=onValue(ref(db,`${ROOT}/timeNotes/${m}/${mnPid}`),s=>{NOTES={[m]:{[mnPid]:s.val()||{}}};paintNotes();},()=>{});
+  }
+}
+subTemps();
 
 function initSelects(){
   const now=new Date(); month=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   fillMonths(); fillWho();
-  const saved=localStorage.getItem('mn_tt_me')||'';
-  if(saved&&PEOPLE.some(p=>p.id===saved)){me=saved;$('#who').value=me;}
+  if(mnAdmin){
+    const saved=localStorage.getItem('mn_tt_me')||'';
+    if(saved&&PEOPLE.some(p=>p.id===saved)) me=saved;
+    else if(mnPid&&PEOPLE.some(p=>p.id===mnPid)) me=mnPid;
+  }else me=mnPid;
+  $('#who').value=me||'';
+  if($('#who').value!==me) me=$('#who').value;   // fiche absente de la liste du mois (ex. direction)
   build();
 }
 function fillMonths(){
@@ -246,6 +347,11 @@ function fillMonths(){
 }
 function fillWho(){
   const s=$('#who');
+  if(!mnAdmin){                                   // l'équipe est identifiée par sa connexion
+    const p=PEOPLE.find(x=>x.id===mnPid);
+    s.innerHTML=`<option value="${esc(mnPid)}">${esc(p?p.nom:mnPid)}</option>`;
+    s.value=mnPid; s.disabled=true; return;
+  }
   s.innerHTML=`<option value="">${esc(t().who)}</option>`+
     PEOPLE.filter(p=>activeAt(p,month)).map(p=>`<option value="${esc(p.id)}">${esc(p.nom)}</option>`).join('');
   s.value=me||'';
@@ -420,8 +526,8 @@ function paintKpi(grand,over){
 }
 
 /* ══════════ contrôles ══════════ */
-$('#who').onchange=e=>{me=e.target.value;localStorage.setItem('mn_tt_me',me);build();};
-$('#month').onchange=e=>{month=e.target.value;fillWho();build();};
+$('#who').onchange=e=>{if(!mnAdmin)return;me=e.target.value;localStorage.setItem('mn_tt_me',me);build();};
+$('#month').onchange=e=>{month=e.target.value;if(!mnAdmin)subTemps();fillWho();build();};
 $('#addp').onchange=e=>{
   const id=e.target.value; e.target.value='';
   if(!id||!me)return;
